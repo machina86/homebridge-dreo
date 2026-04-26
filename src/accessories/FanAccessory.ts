@@ -2,6 +2,26 @@ import { Service, PlatformAccessory } from 'homebridge';
 import { DreoPlatform } from '../platform';
 import { BaseAccessory } from './BaseAccessory';
 
+// Known oscillation state keys, in priority order. Add new keys here if Dreo
+// introduces additional oscillation commands on future devices.
+const OSCILLATION_KEYS = ['shakehorizon', 'hoscon', 'oscmode'] as const;
+
+// Fallback maxSpeed for devices whose Dreo API returns an incomplete controlsConf
+// (e.g. { template: 'DR-HPF002S' } with no control array). swingCmd is not needed
+// here — it is auto-detected from whichever oscillation key is present in device state.
+//
+// Future enhancement: resolve the template model name returned in controlsConf against
+// the Dreo API to fetch the real maxSpeed, eliminating the need for this map entirely.
+// Until then, add an entry here for any device that crashes with "No controlsConf" and
+// has a non-standard speed count. Devices with full controlsConf from the API are
+// unaffected and do not need an entry.
+const DEVICE_FALLBACK_CONFIGS: Record<string, { maxSpeed: number }> = {
+  'DR-HPF004S': { maxSpeed: 9 },
+  'DR-HPF007S': { maxSpeed: 9 },
+  'DR-HPF008S': { maxSpeed: 9 },
+  'DR-HTF024S': { maxSpeed: 9 },
+};
+
 /**
  * Platform Accessory
  * An instance of this class is created for each accessory your platform registers
@@ -36,11 +56,19 @@ export class FanAccessory extends BaseAccessory {
     super(platform, accessory);
 
     // Initialize fan values
-    // Get max fan speed from Dreo API
-    this.currState.maxSpeed =
-      accessory.context.device.controlsConf.control.find(
+    // Get max fan speed from Dreo API, falling back to device config map for newer models
+    // that return empty controlsConf from the API
+    const model = accessory.context.device.model;
+    this.currState.maxSpeed = Number(
+      accessory.context.device?.controlsConf?.control?.find(
         (params) => params.type === 'Speed',
-      ).items[1].text;
+      )?.items?.[1]?.text ??
+      DEVICE_FALLBACK_CONFIGS[model]?.maxSpeed ??
+      4,
+    );
+    if (!accessory.context.device?.controlsConf?.control) {
+      this.platform.log.warn('No controlsConf from API for %s, using fallback config (maxSpeed: %s)', model, this.currState.maxSpeed);
+    }
     // Load current state from Dreo API
     this.currState.speed =
       (state.windlevel.state * 100) / this.currState.maxSpeed;
@@ -84,14 +112,14 @@ export class FanAccessory extends BaseAccessory {
       .onSet(this.setRotationSpeed.bind(this))
       .onGet(this.getRotationSpeed.bind(this));
 
-    // Check whether fan supports oscillation
-    // Some fans use different commands to toggle oscillation, determine which one should be used
-    const swing = accessory.context.device.controlsConf.control.find(
-      (params) => params.type === 'Oscillation',
-    );
-    if (swing !== undefined) {
-      this.currState.swingCMD = swing.cmd;
-    }
+    // Check whether fan supports oscillation. First try the API controlsConf, then
+    // auto-detect from whichever oscillation key is present in the device state.
+    this.currState.swingCMD =
+      accessory.context.device?.controlsConf?.control?.find(
+        (params) => params.type === 'Oscillation',
+      )?.cmd ??
+      OSCILLATION_KEYS.find((key) => key in state) ??
+      'none';
 
     if (this.currState.swingCMD !== 'none') {
       // Register handlers for Swing Mode (oscillation)
@@ -99,7 +127,7 @@ export class FanAccessory extends BaseAccessory {
         .getCharacteristic(this.platform.Characteristic.SwingMode)
         .onSet(this.setSwingMode.bind(this))
         .onGet(this.getSwingMode.bind(this));
-      this.currState.swing = state[this.currState.swingCMD].state;
+      this.currState.swing = Boolean(state[this.currState.swingCMD]?.state ?? false);
     }
 
     // Check if mode control is supported
