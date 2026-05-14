@@ -1,6 +1,6 @@
 import { API, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig, Service, Characteristic } from 'homebridge';
 
-import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
+import { PLATFORM_NAME, PLUGIN_NAME, PLUGIN_VERSION } from './settings';
 import { FanAccessory } from './accessories/FanAccessory';
 import { HeaterAccessory } from './accessories/HeaterAccessory';
 import { HumidifierAccessory } from './accessories/HumidifierAccessory';
@@ -24,6 +24,7 @@ export class DreoPlatform implements DynamicPlatformPlugin {
     public readonly config: PlatformConfig,
     public readonly api: API,
   ) {
+    this.log.info('Homebridge Dreo plugin version:', PLUGIN_VERSION);
     this.log.debug('Finished initializing platform:', this.config.name);
 
     // When this event is fired it means Homebridge has restored all cached accessories from disk.

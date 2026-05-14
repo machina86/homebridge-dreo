@@ -7,3 +7,8 @@ export const PLATFORM_NAME = 'DreoPlatform';
  * This must match the name of your plugin as defined the package.json
  */
 export const PLUGIN_NAME = 'homebridge-dreo';
+
+/**
+ * Keep this in sync with package.json while debugging local Homebridge links.
+ */
+export const PLUGIN_VERSION = '4.3.1';
